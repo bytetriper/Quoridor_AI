@@ -34,16 +34,16 @@ class state
 	double evalue;
 	int dis,oppdis;
 	int d[17][17];
+	int var[9],opvar[9];
 	bool side;
 	static const int boardsiz=17;
 	static const int target=8;
-	static const int avlmove=12;
+	static const int avlmove=16;
 	static const int ordersiz=128;
-	int dy[15]={-2,2,0,0,-2,-2,2,2,-2,-2,2,2},dx[15]={0,0,-2,2,2,-2,-2,2,2,-2,-2,2};
+	int dy[17]={-2,2,0,0,-2,-2,2,2,-2,-2,2,2,-4,4,0,0},dx[17]={0,0,-2,2,2,-2,-2,2,2,-2,-2,2,0,0,-4,4};
 	enum Move{
-		Left,Right,Down,Up,Lup,Ldown,Rdown,Rup,UpL,DownL,DownR,UpR
+		Left,Right,Down,Up,Lup,Ldown,Rdown,Rup,UpL,DownL,DownR,UpR,LeftL,RightR,DownD,UpU
 	};
-	bool avl[15]={1,1,1,1};//Movement available
 	int Op[2],Ap[2];//Opponent-position Agent-position
 	std::priority_queue<prd,std::vector<prd>,cmp> hp;
 	void init() {
@@ -71,9 +71,12 @@ class state
 	{
 		for(int i=0;i<boardsiz;++i)
 			for(int j=0;j<boardsiz;++j)
-			{	
 				board[i][j]=ot.board[i][j];
-			}
+		for(int i=0;i<9;++i)
+		{
+			var[i]=ot.var[i];
+			opvar[i]=ot.opvar[i];
+		}
 		Op[0]=ot.Op[0];Op[1]=ot.Op[1];
 		Ap[0]=ot.Ap[0];Ap[1]=ot.Ap[1];
 		side=ot.side;
@@ -82,7 +85,7 @@ class state
 	}
 	inline prcmd decode(int x)
 	{
-		if(x>=140||x<0)
+		if(x>=144||x<0)
 		{	
 			std::cerr<<x<<'\n';
 			throw("Decode Error");
@@ -90,11 +93,6 @@ class state
 		if(x>=128)
 		{	
 			int tx=(side?Ap[0]:Op[0])+dx[x-128],ty=(side?Ap[1]:Op[1])+dy[x-128];
-			if(board[tx][ty])
-			{
-				tx+=dx[x-128];
-				ty+=dy[x-128];
-			}
 			return prcmd(side?3:0,pri(tx,ty));
 		}
 		if(x>=64)
@@ -110,11 +108,6 @@ class state
 			return !(board[x][y+1]|board[x+1][y+1]|board[x+2][y+1]);
 		else
 			return !(board[x+1][y]|board[x+1][y+1]|board[x+1][y+2]);
-	}
-	inline void reset()
-	{
-		for(int i=4;i<avlmove;++i)
-			avl[i]=0;
 	}
 	inline bool is_wall(int i,int x,int y)
 	{
@@ -135,20 +128,26 @@ class state
 			case DownL:return board[tx][ty+1];
 			case DownR:return board[tx][ty-1];
 			case UpR:return board[tx][ty-1];
+			case UpU:
+			case DownD:
+			case LeftL:
+			case RightR:return false;
 			default:
 				std::cerr<<"[is_wall]Unexpected Move\n";
 				return true;
 		}
 	}
-	inline std::pair<int,int> try_move(int i,int x,int y,bool output=0)//0-11
+	inline std::pair<int,int> try_move(int i,int x,int y,bool avl[],bool ignore,bool output=0)//0-15
 	{
 		int tx=x+dx[i],ty=y+dy[i];
 		if(is_wall(i,x,y))
 			return std::pair<int,int>(x,y);
-		if(board[tx][ty])
+		if(output)
+			std::cerr<<x<<" "<<y<<" "<<tx<<" "<<ty<<"\n";
+		if(board[tx][ty]&&(!ignore))
 		{
 			if(output)
-				std::cerr<<"Countering Opponent! cors:"<<x/2<<" "<<y/2<<" "<<tx/2<<" "<<ty/2<<"\n";
+				std::cerr<<"is wall\n";
 			if(is_wall(i,tx,ty))
 			{
 				//std::cerr<<"Counter and wall"<<"\n";
@@ -159,19 +158,25 @@ class state
 					case Down:avl[DownL]=avl[DownR]=1;break;
 					case Up:avl[UpL]=avl[UpR]=1;break;
 				}
-				return std::pair<int,int>(x,y);
 			}
 			else
 			{	
-				//std::cerr<<"Counter and Jump"<<"\n";
-				return std::pair<int,int>(tx+dx[i],ty+dy[i]);
+				switch (i)
+				{
+					case Left:avl[LeftL]=1;break;
+					case Right:avl[RightR]=1;break;
+					case Down:avl[DownD]=1;break;
+					case Up:avl[UpU]=1;break;
+				}
 			}
+			return std::pair<int,int>(x,y);
 		}
 		else
 			return std::pair<int,int>(tx,ty);
 	}
-	inline int bfs(int x0,int y0,int target_line)//return the minimum distance from (x0,y0) to target_line
+	inline int bfs(int x0,int y0,int target_line,bool output=0)//return the minimum distance from (x0,y0) to target_line
 	{
+		bool avl[avlmove]={1,1,1,1};
 		if(x0==target_line)	{return 0;}
 		std::queue<pri> q;
 		//std::cerr<<"Begin:"<<q.size()<<"\n";
@@ -181,15 +186,17 @@ class state
 				d[i][j]=INF;
 		d[x0][y0]=0;
 		q.push(std::make_pair(x0,y0));
+		state tmp(*this);
 		while(!q.empty())
 		{
 			int x=q.front().first,y=q.front().second;
 			//q.pop();
-			reset();
+			for(int i=4;i<avlmove;++i)
+				avl[i]=false;
 			for(int i=0;i<avlmove;++i)
 				if(avl[i])
 				{
-					std::pair<int,int> target(try_move(i,x,y));
+					std::pair<int,int> target(try_move(i,x,y,avl,true));
 					if(target==q.front())
 						continue;
 					if(d[target.first][target.second]==INF)
@@ -197,13 +204,23 @@ class state
 						d[target.first][target.second]=d[x][y]+1;
 						if(target.first!=target_line)
 							q.push(target);
+						if(output)
+							tmp.board[target.first][target.second]=true;
 					}	
 				}
 			q.pop();
 		}
 		int ans=INF;
 		for(int i=0;i<boardsiz;i+=2)
+		{	
+			if(x0==Op[0]&&y0==Op[1])
+				var[i>>1]=d[target_line][i];
+			if(x0==Ap[0]&&y0==Ap[1])
+				opvar[i>>1]=d[target_line][i];
 			ans=std::min(ans,d[target_line][i]);
+		}
+		if(output)
+			tmp.print();
 		return ans;
 	}
 	void upd_dis()
@@ -247,6 +264,26 @@ class state
 	{
 		return x;
 	}
+	inline double sigmoid(double x)
+	{
+		return 1/(1+exp(-0.75*x+5));
+	}
+	inline double calc_var(int d[])
+	{
+		double var=0,mean=0;
+		int cnt=0;
+		for(int i=0;i<9;++i)
+			if(d[i]!=INF)
+			{
+				++cnt;
+				mean+=d[i];
+			}
+		mean/=cnt;
+		for(int i=0;i<9;++i)
+			if(d[i]!=INF)
+				var+=(d[i]-mean)*(d[i]-mean);
+		return var/cnt;
+	}
 	inline double calc()//Evaluation Function
 	{
 		//dis=bfs(Ap[0],Ap[1],ai_side?8:0);
@@ -254,12 +291,14 @@ class state
 		if(oppdis==INF||dis==INF)
 		{	std::cerr<<"error dis\n";}
 		evalue=-dis*dis;
-		return 400-dis*dis+oppdis;
+		double varm=calc_var(var),varop=calc_var(opvar);
+		double oppscale=20,varscale=5;
+		return 4000-dis*dis+oppscale*sigmoid(oppdis)*oppdis-varscale*varm+0.8*varop;
 	}
-	inline void check_move()
+	inline void check_move(bool output=0)
 	{
+		bool avl[avlmove]={1,1,1,1};
 		while(!hp.empty())hp.pop();
-		reset();
 		pri origin(side?pri(Ap[0],Ap[1]):pri(Op[0],Op[1]));
 		#ifdef DEBUG
 			std::cerr<<"[heap cleared]\n"<<"Opp:"<<Op[0]<<" "<<Op[1]<<"\n";
@@ -268,11 +307,18 @@ class state
 		for(int i=0;i<avlmove;++i)
 			if(avl[i])
 			{
-				pri target(try_move(i,origin.first,origin.second));
+				pri target(try_move(i,origin.first,origin.second,avl,false,output));
 				if(target==origin)continue;
 				upd(prcmd(side?3:0,target));
 				upd_dis();
 				upd(prcmd(side?3:0,origin));
+				if(output)
+				{
+					std::cerr<<i<<" "<<dis<<" "<<oppdis<<"\n";
+					for(int i=0;i<avlmove;++i)
+						std::cerr<<(avl[i]?'Y':'N')<<" ";
+					std::cerr<<"\n";
+				}
 				if(dis==INF||oppdis==INF)
 					continue;
 				#ifdef DEBUG
@@ -280,6 +326,8 @@ class state
 					std::cerr<<"[pushing move]"<<"move:"<<i<<" rate:"<<calc()<<"\n"<<"target:"<<target.first<<" "<<target.second<<"\n";
 					if(!side)print();
 				#endif
+				
+				if(output)std::cerr<<"[pushing move]"<<"move:"<<i<<" rate:"<<calc()<<"\n"<<"target:"<<target.first<<" "<<target.second<<"\n";
 				if(side)
 					hp.push(prd(128+i,calc()));
 				else
@@ -288,8 +336,9 @@ class state
 			}
 		if((side?Plankcnt:oppcnt)!=0)
 		{
-			int st=std::max(0,(side?Op[1]:Ap[1])-4),en=std::min(boardsiz-3,(side?Op[1]:Ap[1])+4);
-			for(int i=st;i<=en;i+=2)
+			//int sty=std::max(0,(side?Op[1]:Ap[1])-6),eny=std::min(boardsiz-3,(side?Op[1]:Ap[1])+6);
+			//int stx=std::max(0,(side?Op[0]:Ap[0])-6),enx=std::min(boardsiz-3,(side?Op[1]:Ap[1])+6);
+			for(int i=0;i<boardsiz;i+=2)
 				for(int j=0;j<boardsiz;j+=2)
 				{
 					if(check_place(i,j,0))
@@ -298,10 +347,7 @@ class state
 						upd_dis();
 						undo_place(i,j,0);
 						if(dis==INF||oppdis==INF)
-						{	
-							upd_dis();
 							continue;
-						}
 						if(side)
 							hp.push(prd(64+(i>>1)*8+(j>>1),calc()));
 						else
@@ -313,11 +359,8 @@ class state
 						upd(prcmd(side?4:1,pri(i,j)));
 						upd_dis();
 						undo_place(i,j,1);
-						if(dis==INF||oppdis==INF)
-						{	
-							upd_dis();
+						if(dis==INF||oppdis==INF)	
 							continue;
-						}
 						if(side)
 							hp.push(prd((i>>1)*8+(j>>1),calc()));
 						else
@@ -349,6 +392,8 @@ class state
 			for(int j=0;j<boardsiz;++j)
 			{
 				char ch=board[i][j]?'~':' ';
+				if(i%2==0&&j%2==0&&board[i][j])
+					ch='C';
 				if(i==Ap[0]&&j==Ap[1])
 					ch='A';
 				if(i==Op[0]&&j==Op[1])
@@ -374,7 +419,6 @@ void init() {
 	#endif
 	srand(time(NULL));
 }
-int order[130];
 double Minimax_Search(state cur,int d)
 {
 	++cnt;
@@ -387,9 +431,7 @@ double Minimax_Search(state cur,int d)
 	if(d==1)
 	{	
 		if(d==d0)
-		{	
 			step=cur.decode(cur.hp.top().first);
-		}
 		return std::abs(cur.hp.top().second);
 	}
 	state nxt(cur);
@@ -456,6 +498,7 @@ std::pair<int, std::pair<int, int> > action(std::pair<int, std::pair<int, int> >
 	std::cerr<<"Best rate:"<<rate<<"\n";
 	std::cerr<<"Search cnt:"<<cnt<<"\n";
 	ST.upd(step);
+	//ST.bfs(ST.Ap[0],ST.Ap[1],ai_side?16:0,1);
 	step.first-=3;
 	step.second.first>>=1;
 	step.second.second>>=1;
