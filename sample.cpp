@@ -522,7 +522,6 @@ std::pair<int, std::pair<int, int> > action(std::pair<int, std::pair<int, int> >
 	cnt=0;
 	loc.second.first<<=1;loc.second.second<<=1;
 	ST.upd(loc);
-	d0=(rand()&1)?3:1;
 	double rate=Minimax_Search(ST,d0);
 	std::cerr<<"Best rate:"<<rate<<"\n";
 	std::cerr<<"Search cnt:"<<cnt<<"\n";
