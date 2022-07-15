@@ -264,20 +264,47 @@ class state
 	{
 		return x;
 	}
-	inline double sigmoid(double x)
+	inline double sigmoid(double x,double offset=0)
 	{
-		return 1/(1+exp(-0.75*x+5));
+		return 1/(1+exp(-x+offset));
+	}
+	inline int calc_cnt(int d[])
+	{
+		int cnt=0;
+		for(int i=0;i<9;++i)
+			if(d[i]!=INF)
+				++cnt;
+		return cnt;
+	}
+	inline int calc_side_con()
+	{
+		int buf=0,target_line=side?16:0;
+		for(int i=1;i<9;++i)
+		{
+			while((!board[target_line][(i<<1)|1]||var[i]==INF)&&i<9)
+				++i;
+			++buf;
+		}
+		return buf;
+	}
+	inline int calc_opside_con()
+	{
+		int buf=0,target_line=side?0:16;
+		for(int i=1;i<9;++i)
+		{
+			while((!board[target_line][(i<<1)|1]||opvar[i]==INF)&&i<9)
+				++i;
+			++buf;
+		}
+		return buf;
 	}
 	inline double calc_var(int d[])
 	{
 		double var=0,mean=0;
-		int cnt=0;
+		int cnt=calc_cnt(d);
 		for(int i=0;i<9;++i)
 			if(d[i]!=INF)
-			{
-				++cnt;
 				mean+=d[i];
-			}
 		mean/=cnt;
 		for(int i=0;i<9;++i)
 			if(d[i]!=INF)
@@ -286,14 +313,15 @@ class state
 	}
 	inline double calc()//Evaluation Function
 	{
-		//dis=bfs(Ap[0],Ap[1],ai_side?8:0);
-		//oppdis=bfs(Op[0],Op[1],ai_side?0:8);
 		if(oppdis==INF||dis==INF)
 		{	std::cerr<<"error dis\n";}
 		evalue=-dis*dis;
 		double varm=calc_var(var),varop=calc_var(opvar);
-		double oppscale=20,varscale=5;
-		return 4000-dis*dis+oppscale*sigmoid(oppdis)*oppdis-varscale*varm+0.8*varop;
+		double oppscale=400,varscale=8;//Hyperperameter
+		int cnt=calc_cnt(var),opcnt=calc_cnt(opvar);
+		int con=calc_side_con(),opcon=calc_opside_con();
+		double penalty_plank=150*sigmoid(0.75*(Plankcnt));
+		return 10000-20*sigmoid(5*dis)*(dis+5)-100/(oppdis+0.001)+10*oppdis-200*varm+penalty_plank;
 	}
 	inline void check_move(bool output=0)
 	{
@@ -411,6 +439,7 @@ int cnt=0;
 prcmd step;
 void init() {
 	ST.init();
+	srand(time(NULL));
 	d0=3; 
 	//d0=ai_side?1:2;
 	#ifdef DEBUG
@@ -494,11 +523,14 @@ std::pair<int, std::pair<int, int> > action(std::pair<int, std::pair<int, int> >
 	cnt=0;
 	loc.second.first<<=1;loc.second.second<<=1;
 	ST.upd(loc);
+	d0=(rand()&1)?3:1;
 	double rate=Minimax_Search(ST,d0);
 	std::cerr<<"Best rate:"<<rate<<"\n";
 	std::cerr<<"Search cnt:"<<cnt<<"\n";
+	
 	ST.upd(step);
 	//ST.bfs(ST.Ap[0],ST.Ap[1],ai_side?16:0,1);
+	std::cerr<<"Plank cnt:"<<ST.Plankcnt<<"\n";
 	step.first-=3;
 	step.second.first>>=1;
 	step.second.second>>=1;
