@@ -319,9 +319,8 @@ class state
 		double varm=calc_var(var),varop=calc_var(opvar);
 		double oppscale=400,varscale=8;//Hyperperameter
 		int cnt=calc_cnt(var),opcnt=calc_cnt(opvar);
-		int con=calc_side_con(),opcon=calc_opside_con();
 		double penalty_plank=150*sigmoid(0.75*(Plankcnt));
-		return 10000-20*sigmoid(5*dis)*(dis+5)-100/(oppdis+0.001)+10*oppdis-200*varm+penalty_plank;
+		return 10000-300*sigmoid(2*dis,3)-70*dis+500*sigmoid(2*oppdis,1)+60*oppdis+200*sigmoid(5*cnt,5)+penalty_plank;
 	}
 	inline void check_move(bool output=0)
 	{
